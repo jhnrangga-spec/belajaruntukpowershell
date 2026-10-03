@@ -1,0 +1,56 @@
+$OutputFile = ".\alamat.txt"
+
+# Buat file jika belum ada
+if (-not (Test-Path $OutputFile)) {
+    New-Item -ItemType File -Path $OutputFile | Out-Null
+}
+
+Write-Host "Monitoring koneksi TCP..." -ForegroundColor Green
+Write-Host "Output: $OutputFile"
+Write-Host "Tekan Ctrl+C untuk berhenti."
+Write-Host ""
+
+$Seen = @{}
+
+while ($true) {
+
+    $connections = Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue
+
+    foreach ($conn in $connections) {
+
+        $remoteIP = $conn.RemoteAddress
+        $remotePort = $conn.RemotePort
+        $localPort = $conn.LocalPort
+        $pid = $conn.OwningProcess
+
+        # Abaikan localhost
+        if ($remoteIP -eq "127.0.0.1" -or $remoteIP -eq "::1") {
+            continue
+        }
+
+        $key = "$remoteIP`:$remotePort"
+
+        if (-not $Seen.ContainsKey($key)) {
+
+            $Seen[$key] = $true
+
+            # Coba resolve hostname
+            try {
+                $hostname = [System.Net.Dns]::GetHostEntry($remoteIP).HostName
+            }
+            catch {
+                $hostname = "-"
+            }
+
+            $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+            $line = "$time | $remoteIP`:$remotePort | Host: $hostname | PID: $pid"
+
+            Add-Content -Path $OutputFile -Value $line
+
+            Write-Host $line -ForegroundColor Cyan
+        }
+    }
+
+    Start-Sleep -Milliseconds 500
+}
